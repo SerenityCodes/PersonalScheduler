@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  productivity-agi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    devices:
+    - /dev/snd
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./db:/app/db
+      - ./data:/data
+    env_file:
+      - .env
