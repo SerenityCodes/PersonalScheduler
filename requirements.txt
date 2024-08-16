@@ -1,9 +1,9 @@
 langchain
 langchain-community
-openai==0.28
+langchain_chroma
+openai
 chromadb
 pysqlite3-binary
 requests
-ascii-magic
 loguru
 duckduckgo_search==4.1.1

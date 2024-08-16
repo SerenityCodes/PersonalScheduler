@@ -6,9 +6,6 @@ services:
       dockerfile: Dockerfile
     devices:
     - /dev/snd
-    depends_on:
-      api:
-        condition: service_healthy
     volumes:
       - ./db:/app/db
       - ./data:/data
