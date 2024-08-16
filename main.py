@@ -1,5 +1,4 @@
 import openai
-#from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.embeddings import LocalAIEmbeddings
 import uuid
 import sys
@@ -16,7 +15,7 @@ __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
-from langchain.vectorstores import Chroma
+from langchain_chroma import Chroma
 from chromadb.config import Settings
 import json
 import os
@@ -34,9 +33,6 @@ parser.add_argument('--prompt', dest='prompt', action='store', default=False,
 # Interactive mode
 parser.add_argument('--interactive', dest='interactive', action='store_true', default=False,
                     help='Interactive mode. Can be used with --prompt to start an interactive session')
-# skip avatar creation
-parser.add_argument('--skip-avatar', dest='skip_avatar', action='store_true', default=False,
-                    help='Skip avatar creation') 
 # Reevaluate
 parser.add_argument('--re-evaluate', dest='re_evaluate', action='store_true', default=False,
                     help='Reevaluate if another action is needed or we have completed the user request')
@@ -55,19 +51,12 @@ parser.add_argument('--plan-message', dest='plan_message', action='store',
                     help="What message to use during planning",
 )                   
 
-DEFAULT_PROMPT="floating hair, portrait, ((loli)), ((one girl)), cute face, hidden hands, asymmetrical bangs, beautiful detailed eyes, eye shadow, hair ornament, ribbons, bowties, buttons, pleated skirt, (((masterpiece))), ((best quality)), colorful|((part of the head)), ((((mutated hands and fingers)))), deformed, blurry, bad anatomy, disfigured, poorly drawn face, mutation, mutated, extra limb, ugly, poorly drawn hands, missing limb, blurry, floating limbs, disconnected limbs, malformed hands, blur, out of focus, long neck, long body, Octane renderer, lowres, bad anatomy, bad hands, text"
-DEFAULT_API_BASE = os.environ.get("DEFAULT_API_BASE", "http://api:8080")
-# TTS api base
-parser.add_argument('--tts-api-base', dest='tts_api_base', action='store', default=DEFAULT_API_BASE,
-                    help='TTS api base')
+OPENAI_API_BASE = os.environ.get("OPENAI_API_BASE", "http://api:8080")
 # LocalAI api base
-parser.add_argument('--localai-api-base', dest='localai_api_base', action='store', default=DEFAULT_API_BASE,
+parser.add_argument('--localai-api-base', dest='localai_api_base', action='store', default=OPENAI_API_BASE,
                     help='LocalAI api base')
 # Images api base
-parser.add_argument('--images-api-base', dest='images_api_base', action='store', default=DEFAULT_API_BASE,
-                    help='Images api base')
-# Embeddings api base
-parser.add_argument('--embeddings-api-base', dest='embeddings_api_base', action='store', default=DEFAULT_API_BASE,
+parser.add_argument('--embeddings-api-base', dest='embeddings_api_base', action='store', default=OPENAI_API_BASE,
                     help='Embeddings api base')
 # Functions model
 parser.add_argument('--functions-model', dest='functions_model', action='store', default="functions",
@@ -78,15 +67,6 @@ parser.add_argument('--embeddings-model', dest='embeddings_model', action='store
 # LLM model
 parser.add_argument('--llm-model', dest='llm_model', action='store', default="gpt-4",
                     help='LLM model')
-# Voice model
-parser.add_argument('--tts-model', dest='tts_model', action='store', default="en-us-kathleen-low.onnx",
-                    help='TTS model')
-# Stable diffusion model
-parser.add_argument('--stablediffusion-model', dest='stablediffusion_model', action='store', default="stablediffusion",
-                    help='Stable diffusion model')
-# Stable diffusion prompt
-parser.add_argument('--stablediffusion-prompt', dest='stablediffusion_prompt', action='store', default=DEFAULT_PROMPT,
-                    help='Stable diffusion prompt')
 # Force action
 parser.add_argument('--force-action', dest='force_action', action='store', default="",
                     help='Force an action')
@@ -99,23 +79,15 @@ parser.add_argument('--critic', dest='critic', action='store_true', default=Fals
 # Parse arguments
 args = parser.parse_args()
 
-STABLEDIFFUSION_MODEL = os.environ.get("STABLEDIFFUSION_MODEL", args.stablediffusion_model)
-STABLEDIFFUSION_PROMPT = os.environ.get("STABLEDIFFUSION_PROMPT", args.stablediffusion_prompt)
 FUNCTIONS_MODEL = os.environ.get("FUNCTIONS_MODEL", args.functions_model)
 EMBEDDINGS_MODEL = os.environ.get("EMBEDDINGS_MODEL", args.embeddings_model)
 LLM_MODEL = os.environ.get("LLM_MODEL", args.llm_model)
-VOICE_MODEL= os.environ.get("TTS_MODEL",args.tts_model)
 STABLEDIFFUSION_MODEL = os.environ.get("STABLEDIFFUSION_MODEL",args.stablediffusion_model)
 STABLEDIFFUSION_PROMPT = os.environ.get("STABLEDIFFUSION_PROMPT", args.stablediffusion_prompt)
 PERSISTENT_DIR = os.environ.get("PERSISTENT_DIR", "/data")
 SYSTEM_PROMPT = ""
 if os.environ.get("SYSTEM_PROMPT") or args.system_prompt:
     SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT", args.system_prompt)
-
-LOCALAI_API_BASE = args.localai_api_base
-TTS_API_BASE = args.tts_api_base
-IMAGE_API_BASE = args.images_api_base
-EMBEDDINGS_API_BASE = args.embeddings_api_base
 
 # Set log level
 LOG_LEVEL = "INFO"
@@ -153,13 +125,6 @@ PLAN_ACTION = "plan"
 embeddings = LocalAIEmbeddings(model=EMBEDDINGS_MODEL,openai_api_base=EMBEDDINGS_API_BASE)
 chroma_client = Chroma(collection_name="memories", persist_directory="db", embedding_function=embeddings)
 
-# Function to create images with LocalAI
-def display_avatar(agi, input_text=STABLEDIFFUSION_PROMPT, model=STABLEDIFFUSION_MODEL):
-    image_url = agi.get_avatar(input_text, model)
-    # convert the image to ascii art
-    my_art = AsciiArt.from_url(image_url)
-    my_art.to_terminal()
-
 ## This function is called to ask the user if does agree on the action to take and execute
 def ask_user_confirmation(action_name, action_parameters):
     logger.info("==> Ask user confirmation")
@@ -183,7 +148,6 @@ def save(memory, agent_actions={}, localagi=None):
     logger.info(">>> saving to memories: ") 
     logger.info(q["content"])
     chroma_client.add_texts([q["content"]],[{"id": str(uuid.uuid4())}])
-    chroma_client.persist()
     return f"The object was saved permanently to memory."
 
 def search_memory(query, agent_actions={}, localagi=None):
@@ -386,11 +350,6 @@ if __name__ == "__main__":
 
     logger.info("Welcome to LocalAGI")
 
-    # Skip avatar creation if --skip-avatar is set
-    if not args.skip_avatar:
-        logger.info("Creating avatar, please wait...")
-        display_avatar(localagi)
-
     actions = ""
     for action in agent_actions:
         actions+=" '"+action+"'"
@@ -413,7 +372,6 @@ if __name__ == "__main__":
             postprocess=args.postprocess,
             subtaskContext=args.subtaskContext,
             )
-        localagi.tts_play(conversation_history[-1]["content"])
 
     if not args.prompt or args.interactive:
         # TODO: process functions also considering the conversation history? conversation history + input
@@ -431,4 +389,3 @@ if __name__ == "__main__":
                 postprocess=args.postprocess,
                 subtaskContext=args.subtaskContext,
                 )
-            localagi.tts_play(conversation_history[-1]["content"])
