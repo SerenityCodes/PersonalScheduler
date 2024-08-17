@@ -3,9 +3,8 @@ from langchain.embeddings import LocalAIEmbeddings
 import uuid
 import sys
 
-from localagi import LocalAGI
+from productivityai import ProductivityChat
 from loguru import logger
-from ascii_magic import AsciiArt
 from duckduckgo_search import DDGS
 from typing import Dict, List
 import os
@@ -82,8 +81,6 @@ args = parser.parse_args()
 FUNCTIONS_MODEL = os.environ.get("FUNCTIONS_MODEL", args.functions_model)
 EMBEDDINGS_MODEL = os.environ.get("EMBEDDINGS_MODEL", args.embeddings_model)
 LLM_MODEL = os.environ.get("LLM_MODEL", args.llm_model)
-STABLEDIFFUSION_MODEL = os.environ.get("STABLEDIFFUSION_MODEL",args.stablediffusion_model)
-STABLEDIFFUSION_PROMPT = os.environ.get("STABLEDIFFUSION_PROMPT", args.stablediffusion_prompt)
 PERSISTENT_DIR = os.environ.get("PERSISTENT_DIR", "/data")
 SYSTEM_PROMPT = ""
 if os.environ.get("SYSTEM_PROMPT") or args.system_prompt:
@@ -105,9 +102,6 @@ logger.debug("Debug mode on")
 FUNCTIONS_MODEL = os.environ.get("FUNCTIONS_MODEL", args.functions_model)
 EMBEDDINGS_MODEL = os.environ.get("EMBEDDINGS_MODEL", args.embeddings_model)
 LLM_MODEL = os.environ.get("LLM_MODEL", args.llm_model)
-VOICE_MODEL= os.environ.get("TTS_MODEL",args.tts_model)
-STABLEDIFFUSION_MODEL = os.environ.get("STABLEDIFFUSION_MODEL",args.stablediffusion_model)
-STABLEDIFFUSION_PROMPT = os.environ.get("STABLEDIFFUSION_PROMPT", args.stablediffusion_prompt)
 PERSISTENT_DIR = os.environ.get("PERSISTENT_DIR", "/data")
 SYSTEM_PROMPT = ""
 if os.environ.get("SYSTEM_PROMPT") or args.system_prompt:
@@ -115,14 +109,16 @@ if os.environ.get("SYSTEM_PROMPT") or args.system_prompt:
 
 LOCALAI_API_BASE = args.localai_api_base
 TTS_API_BASE = args.tts_api_base
-IMAGE_API_BASE = args.images_api_base
 EMBEDDINGS_API_BASE = args.embeddings_api_base
+
+API_KEY = os.environ.get("OPENAI_API_KEY", "random-api-key")
 
 ## Constants
 REPLY_ACTION = "reply"
 PLAN_ACTION = "plan"
 
-embeddings = LocalAIEmbeddings(model=EMBEDDINGS_MODEL,openai_api_base=EMBEDDINGS_API_BASE)
+openai_client = openai.OpenAI(api_key=API_KEY, base_url=OPENAI_API_BASE)
+embeddings = LocalAIEmbeddings(model=EMBEDDINGS_MODEL, client=openai_client)
 chroma_client = Chroma(collection_name="memories", persist_directory="db", embedding_function=embeddings)
 
 ## This function is called to ask the user if does agree on the action to take and execute
@@ -143,14 +139,14 @@ def ask_user_confirmation(action_name, action_parameters):
 ### Agent capabilities
 ### These functions are called by the agent to perform actions
 ###
-def save(memory, agent_actions={}, localagi=None):
+def save(memory, agent_actions={}, chat_instance=None):
     q = json.loads(memory)
     logger.info(">>> saving to memories: ") 
     logger.info(q["content"])
     chroma_client.add_texts([q["content"]],[{"id": str(uuid.uuid4())}])
     return f"The object was saved permanently to memory."
 
-def search_memory(query, agent_actions={}, localagi=None):
+def search_memory(query, agent_actions={}, chat_instance=None):
     q = json.loads(query)
     docs = chroma_client.similarity_search(q["reasoning"])
     text_res="Memories found in the database:\n"
@@ -160,11 +156,11 @@ def search_memory(query, agent_actions={}, localagi=None):
     #if args.postprocess:
     #    return post_process(text_res)
     #return text_res
-    return localagi.post_process(text_res)
+    return chat_instance.post_process(text_res)
 
 
 # write file to disk with content
-def save_file(arg, agent_actions={}, localagi=None):
+def save_file(arg, agent_actions={}, chat_instance=None):
     arg = json.loads(arg)
     filename = arg["filename"]
     content = arg["content"]
@@ -224,7 +220,7 @@ def ddg(query: str, num_results: int, backend: str = "api") -> List[Dict[str, st
     return formatted_results
 
 ## Search on duckduckgo
-def search_duckduckgo(a, agent_actions={}, localagi=None):
+def search_duckduckgo(a, agent_actions={}, chat_instance=None):
     a = json.loads(a)
     list=ddg(a["query"], args.search_results)
 
@@ -326,17 +322,10 @@ agent_actions = {
 if __name__ == "__main__":
     conversation_history = []
 
-    # Create a LocalAGI instance
-    logger.info("Creating LocalAGI instance")
-    localagi = LocalAGI(
+    logger.info("Creating Chat instance")
+    localagi = ProductivityChat(
         agent_actions=agent_actions,
         llm_model=LLM_MODEL,
-        tts_model=VOICE_MODEL,
-        tts_api_base=TTS_API_BASE,
-        functions_model=FUNCTIONS_MODEL,
-        api_base=LOCALAI_API_BASE,
-        stablediffusion_api_base=IMAGE_API_BASE,
-        stablediffusion_model=STABLEDIFFUSION_MODEL,
         force_action=args.force_action,
         plan_message=args.plan_message,
     )
@@ -348,12 +337,12 @@ if __name__ == "__main__":
             "content": SYSTEM_PROMPT
         })
 
-    logger.info("Welcome to LocalAGI")
+    logger.info("Welcome to ProductivityAI")
 
     actions = ""
     for action in agent_actions:
         actions+=" '"+action+"'"
-    logger.info("LocalAGI internally can do the following actions:{actions}", actions=actions)
+    logger.info("ProducutivityAI internally can do the following actions:{actions}", actions=actions)
 
     if not args.prompt:
         logger.info(">>> Interactive mode <<<")

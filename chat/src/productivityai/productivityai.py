@@ -4,14 +4,10 @@ import requests
 from loguru import logger
 import json
 
-DEFAULT_API_BASE = "http://api:8080"
-VOICE_MODEL = "en-us-kathleen-low.onnx"
-STABLEDIFFUSION_MODEL = "stablediffusion"
-FUNCTIONS_MODEL = "functions"
+OPENAI_API_BASE = "http://api:8080"
 LLM_MODEL = "gpt-4"
 
-# LocalAGI class
-class LocalAGI:
+class ProductivityChat:
     # Constructor
     def __init__(self, 
                  plan_action="plan", 
@@ -19,22 +15,15 @@ class LocalAGI:
                  force_action="",
                  agent_actions={}, 
                  plan_message="",
-                 api_base=DEFAULT_API_BASE, 
-                 tts_api_base="", 
-                 stablediffusion_api_base="",
-                 tts_model=VOICE_MODEL, 
-                 stablediffusion_model=STABLEDIFFUSION_MODEL, 
-                 functions_model=FUNCTIONS_MODEL, 
+                 client=openai.OpenAI(),
                  llm_model=LLM_MODEL,
-                 tts_player="aplay",
                  action_callback=None,
                  reasoning_callback=None,
                  ):
-        self.api_base = api_base
         self.agent_actions = agent_actions
         self.plan_message = plan_message
         self.force_action = force_action
-        self.tts_player = tts_player
+        self.client = client
         self.action_callback = action_callback
         self.reasoning_callback = reasoning_callback
         self.agent_actions[plan_action] = {
@@ -61,55 +50,8 @@ class LocalAGI:
                                         "plannable": False,
                                         "description": 'For replying to the user, the assistant replies with the action "'+reply_action+'" and the reply to the user directly when there is nothing to do.',
                                     }
-        self.tts_api_base = tts_api_base if tts_api_base else self.api_base
-        self.stablediffusion_api_base = stablediffusion_api_base if stablediffusion_api_base else self.api_base
-        self.tts_model = tts_model
-        self.stablediffusion_model = stablediffusion_model
-        self.functions_model = functions_model
         self.llm_model = llm_model
         self.reply_action = reply_action
-    # Function to create images with LocalAI
-    def get_avatar(self, input_text):
-        response = openai.Image.create(
-            prompt=input_text,
-            n=1,
-            size="128x128",
-            api_base=self.sta+"/v1"
-        )
-        return response['data'][0]['url']
-
-    def tts_play(self, input_text):
-        output_file_path = '/tmp/output.wav'
-        self.tts(input_text, output_file_path)
-        try:
-            # Use aplay to play the audio
-            os.system(f"{self.tts_player} {output_file_path}")
-            # remove the audio file
-            os.remove(output_file_path)
-        except:
-            logger.info('Unable to play audio')
-        
-    # Function to create audio with LocalAI
-    def tts(self, input_text, output_file_path):
-        # strip newlines from text
-        input_text = input_text.replace("\n", ".")
-
-        # get from OPENAI_API_BASE env var
-        url = self.tts_api_base + '/tts'
-        headers = {'Content-Type': 'application/json'}
-        data = {
-            "input": input_text,
-            "model": self.tts_model,
-        }
-
-        response = requests.post(url, headers=headers, data=json.dumps(data))
-
-        if response.status_code == 200:
-            with open(output_file_path, 'wb') as f:
-                f.write(response.content)
-            logger.info('Audio file saved successfully:', output_file_path)
-        else:
-            logger.info('Request failed with status code', response.status_code)
 
     # Function to analyze the user input and pick the next action to do
     def needs_to_do_action(self, user_input, agent_actions={}):
@@ -156,13 +98,11 @@ Function call: """
             }
             },    
         ]
-        response = openai.ChatCompletion.create(
+        response = self.client.chat.completions.create(
             #model="gpt-3.5-turbo",
-            model=self.functions_model,
+            model=self.llm_model,
             messages=messages,
-            request_timeout=1200,
             functions=functions,
-            api_base=self.api_base+"/v1",
             stop=None,
             temperature=0.1,
             #function_call="auto"
@@ -217,7 +157,7 @@ Function call: """
             if self.action_callback:
                 self.action_callback(function_name, function_parameters)
 
-            function_result = function_to_call(function_parameters, agent_actions=self.agent_actions, localagi=self)
+            function_result = function_to_call(function_parameters, agent_actions=self.agent_actions, chat_instance=self)
             logger.info("==> function result: {function_result}", function_result=function_result)
             messages.append(
                 {
@@ -246,18 +186,13 @@ Function call: """
         for action in self.agent_actions:
             if self.agent_actions[action].get("signature"):
                 functions.append(self.agent_actions[action]["signature"])
-        response = openai.ChatCompletion.create(
+        response = self.client.chat.completions.create(
             #model="gpt-3.5-turbo",
             model=self.functions_model,
             messages=messages,
-            functions=functions,
-            request_timeout=1200,
-            stop=None,
-            api_base=self.api_base+"/v1",
-            temperature=0.1,
-            function_call=function_call
+            tools=functions,
+            temperature=0.1
         )
-
         return response
 
     # Rework the content of each message in the history in a way that is understandable by the LLM
@@ -286,18 +221,15 @@ Function call: """
         return messages
 
     def converse(self, responses):
-        response = openai.ChatCompletion.create(
+        response = self.client.chat.completions.create(
             model=self.llm_model,
             messages=responses,
-            stop=None,
-            api_base=self.api_base+"/v1",
-            request_timeout=1200,
             temperature=0.1,
         )
         responses.append(
             {
                 "role": "assistant",
-                "content": response.choices[0].message["content"],
+                "content": response.choices[0].message.content,
             }
         )
         return responses
@@ -331,15 +263,13 @@ Function call: """
         if suffix != "":
             messages[0]["content"]+=f"""{suffix}"""
     
-        response = openai.ChatCompletion.create(
+        response = self.client.chat.completions.create(
             model=self.llm_model,
             messages=messages,
             stop=None,
-            api_base=self.api_base+"/v1",
-            request_timeout=1200,
             temperature=0.1,
         )
-        return  response.choices[0].message["content"]
+        return response.choices[0].message.content
 
     def post_process(self, string):
         messages = [
@@ -355,15 +285,13 @@ Function call: """
         ]
         logger.info("==> Post processing: {string}", string=string)
         # get the response from the model
-        response = openai.ChatCompletion.create(
+        response = self.client.chat.completions.create(
             model=self.llm_model,
             messages=messages,
-            api_base=self.api_base+"/v1",
             stop=None,
             temperature=0.1,
-            request_timeout=1200,
         )
-        result = response["choices"][0]["message"]["content"]
+        result = response["choices"][0].message.content
         logger.info("==> Processed: {string}", string=result)
         return result
 
@@ -422,12 +350,11 @@ Function call: """
             }
             },    
         ]
-        response = openai.ChatCompletion.create(
+        response = self.client.chat.completions.create(
             #model="gpt-3.5-turbo",
             model=self.functions_model,
             messages=messages,
             functions=functions,
-            api_base=self.api_base+"/v1",
             stop=None,
             temperature=0.1,
             #function_call="auto"
