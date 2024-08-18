@@ -13,13 +13,15 @@ class ProductivityChat:
                  plan_action="plan", 
                  reply_action="reply",
                  force_action="",
-                 agent_actions={}, 
+                 agent_actions=None, 
                  plan_message="",
                  client=None,
                  llm_model=LLM_MODEL,
                  action_callback=None,
                  reasoning_callback=None,
                  ):
+        if agent_actions is None:
+            agent_actions = {}
         self.agent_actions = agent_actions
         self.plan_message = plan_message
         self.force_action = force_action
