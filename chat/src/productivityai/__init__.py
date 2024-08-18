@@ -1,1 +1,1 @@
-from .productivityai import *
+from .productivityai import ProductivityChat
