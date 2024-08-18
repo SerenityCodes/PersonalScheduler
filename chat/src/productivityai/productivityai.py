@@ -15,7 +15,7 @@ class ProductivityChat:
                  force_action="",
                  agent_actions={}, 
                  plan_message="",
-                 client=openai.OpenAI(),
+                 client=None,
                  llm_model=LLM_MODEL,
                  action_callback=None,
                  reasoning_callback=None,
@@ -23,6 +23,8 @@ class ProductivityChat:
         self.agent_actions = agent_actions
         self.plan_message = plan_message
         self.force_action = force_action
+        if client is None:
+            client = openai.OpenAI()
         self.client = client
         self.action_callback = action_callback
         self.reasoning_callback = reasoning_callback
@@ -54,7 +56,10 @@ class ProductivityChat:
         self.reply_action = reply_action
 
     # Function to analyze the user input and pick the next action to do
-    def needs_to_do_action(self, user_input, agent_actions={}):
+    def needs_to_do_action(self, user_input, agent_actions=None):
+        # Initialize agent actions if none is given
+        if agent_actions is None:
+            agent_actions = {}
         if len(agent_actions) == 0:
             agent_actions = self.agent_actions
         # Get the descriptions and the actions name (the keys)
