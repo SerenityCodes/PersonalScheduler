@@ -1,0 +1,12 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "productivitychat"
+version = "0.0.1"
+authors = [
+  { name="SerernityCodes", email="coolemail@email.com" },
+]
+description = "ProductivityChat Componenet"
+requires-python = ">=3.9"
