@@ -4,6 +4,9 @@ models/
 config.ini
 .dockerenv
 
+# Python Cache
+__pycache__/
+
 # Java Build
 build/
 .settings/

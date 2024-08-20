@@ -1,5 +1,5 @@
 import openai
-from langchain.embeddings import LocalAIEmbeddings
+from langchain_community.embeddings import LocalAIEmbeddings
 import uuid
 import sys
 
@@ -14,77 +14,34 @@ __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
+
 from langchain_chroma import Chroma
-from chromadb.config import Settings
 import json
 import os
-from io import StringIO 
 
 # Parse arguments such as system prompt and batch mode
 import argparse
 parser = argparse.ArgumentParser(description='LocalAGI')
-# System prompt
-parser.add_argument('--system-prompt', dest='system_prompt', action='store',
-                    help='System prompt to use')
-# Batch mode
-parser.add_argument('--prompt', dest='prompt', action='store', default=False,
-                    help='Prompt mode')
-# Interactive mode
-parser.add_argument('--interactive', dest='interactive', action='store_true', default=False,
-                    help='Interactive mode. Can be used with --prompt to start an interactive session')
-# Reevaluate
-parser.add_argument('--re-evaluate', dest='re_evaluate', action='store_true', default=False,
-                    help='Reevaluate if another action is needed or we have completed the user request')
-# Postprocess
-parser.add_argument('--postprocess', dest='postprocess', action='store_true', default=False,
-                    help='Postprocess the reasoning')
-# Subtask context
-parser.add_argument('--subtask-context', dest='subtaskContext', action='store_true', default=False,
-                    help='Include context in subtasks')
-
-# Search results number
-parser.add_argument('--search-results', dest='search_results', type=int, action='store', default=2,
-                    help='Number of search results to return')
-# Plan message
-parser.add_argument('--plan-message', dest='plan_message', action='store', 
-                    help="What message to use during planning",
-)                   
+parser.add_argument("--prompt", dest="prompt", action="store_true", default=False,
+                    help="If no interaction is wanted, give the initial prompt")
 
 OPENAI_API_BASE = os.environ.get("OPENAI_API_BASE", "http://api:8080")
-# LocalAI api base
-parser.add_argument('--localai-api-base', dest='localai_api_base', action='store', default=OPENAI_API_BASE,
-                    help='LocalAI api base')
-# Images api base
-parser.add_argument('--embeddings-api-base', dest='embeddings_api_base', action='store', default=OPENAI_API_BASE,
-                    help='Embeddings api base')
-# Functions model
+API_KEY = os.environ.get("OPENAI_API_KEY", "random-api-key")
 parser.add_argument('--functions-model', dest='functions_model', action='store', default="functions",
                     help='Functions model')
-# Embeddings model
-parser.add_argument('--embeddings-model', dest='embeddings_model', action='store', default="all-MiniLM-L6-v2",
-                    help='Embeddings model')
 # LLM model
 parser.add_argument('--llm-model', dest='llm_model', action='store', default="gpt-4",
                     help='LLM model')
-# Force action
-parser.add_argument('--force-action', dest='force_action', action='store', default="",
-                    help='Force an action')
 # Debug mode
 parser.add_argument('--debug', dest='debug', action='store_true', default=False,
                     help='Debug mode')
-# Critic mode
-parser.add_argument('--critic', dest='critic', action='store_true', default=False,
-                    help='Enable critic')
 # Parse arguments
 args = parser.parse_args()
 
 FUNCTIONS_MODEL = os.environ.get("FUNCTIONS_MODEL", args.functions_model)
-EMBEDDINGS_MODEL = os.environ.get("EMBEDDINGS_MODEL", args.embeddings_model)
+EMBEDDINGS_MODEL = os.environ.get("EMBEDDINGS_MODEL", "all-MiniLM-L6-v2")
 LLM_MODEL = os.environ.get("LLM_MODEL", args.llm_model)
-PERSISTENT_DIR = os.environ.get("PERSISTENT_DIR", "/data")
-SYSTEM_PROMPT = ""
-if os.environ.get("SYSTEM_PROMPT") or args.system_prompt:
-    SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT", args.system_prompt)
+PERSISTENT_DIR = "/data"
 
 # Set log level
 LOG_LEVEL = "INFO"
@@ -99,19 +56,6 @@ if args.debug:
     LOG_LEVEL = "DEBUG"
 logger.debug("Debug mode on")
 
-FUNCTIONS_MODEL = os.environ.get("FUNCTIONS_MODEL", args.functions_model)
-EMBEDDINGS_MODEL = os.environ.get("EMBEDDINGS_MODEL", args.embeddings_model)
-LLM_MODEL = os.environ.get("LLM_MODEL", args.llm_model)
-PERSISTENT_DIR = os.environ.get("PERSISTENT_DIR", "/data")
-SYSTEM_PROMPT = ""
-if os.environ.get("SYSTEM_PROMPT") or args.system_prompt:
-    SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT", args.system_prompt)
-
-LOCALAI_API_BASE = args.localai_api_base
-TTS_API_BASE = args.tts_api_base
-EMBEDDINGS_API_BASE = args.embeddings_api_base
-
-API_KEY = os.environ.get("OPENAI_API_KEY", "random-api-key")
 
 ## Constants
 REPLY_ACTION = "reply"
@@ -222,7 +166,7 @@ def ddg(query: str, num_results: int, backend: str = "api") -> List[Dict[str, st
 ## Search on duckduckgo
 def search_duckduckgo(a, agent_actions={}, chat_instance=None):
     a = json.loads(a)
-    list=ddg(a["query"], args.search_results)
+    list=ddg(a["query"], 2)
 
     text_res=""   
     for doc in list:
@@ -239,24 +183,6 @@ def search_duckduckgo(a, agent_actions={}, chat_instance=None):
 
 ### Agent action definitions
 agent_actions = {
-    "search_internet": {
-        "function": search_duckduckgo,
-        "plannable": True,
-        "description": 'For searching the internet with a query, the assistant replies with the action "search_internet" and the query to search.',
-        "signature": {
-            "name": "search_internet",
-            "description": """For searching internet.""",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "information to save"
-                    },
-                },
-            }
-        },
-    },
     "save_file": {
         "function": save_file,
         "plannable": True,
@@ -326,16 +252,10 @@ if __name__ == "__main__":
     localagi = ProductivityChat(
         agent_actions=agent_actions,
         llm_model=LLM_MODEL,
-        force_action=args.force_action,
-        plan_message=args.plan_message,
+        functions_model=FUNCTIONS_MODEL,
+        base_url=OPENAI_API_BASE,
+        api_key=API_KEY
     )
-
-    # Set a system prompt if SYSTEM_PROMPT is set
-    if SYSTEM_PROMPT != "":
-        conversation_history.append({
-            "role": "system",
-            "content": SYSTEM_PROMPT
-        })
 
     logger.info("Welcome to ProductivityAI")
 
@@ -350,19 +270,7 @@ if __name__ == "__main__":
         logger.info(">>> Prompt mode <<<")
         logger.info(args.prompt)
 
-    # IF in prompt mode just evaluate, otherwise loop
-    if args.prompt:
-        conversation_history=localagi.evaluate(
-            args.prompt, 
-            conversation_history, 
-            critic=args.critic,
-            re_evaluate=args.re_evaluate, 
-            # Enable to lower context usage but increases LLM calls
-            postprocess=args.postprocess,
-            subtaskContext=args.subtaskContext,
-            )
-
-    if not args.prompt or args.interactive:
+    if not args.prompt:
         # TODO: process functions also considering the conversation history? conversation history + input
         logger.info(">>> Ready! What can I do for you? ( try with: plan a roadtrip to San Francisco ) <<<")
 
@@ -372,9 +280,8 @@ if __name__ == "__main__":
             conversation_history=localagi.evaluate(
                 user_input, 
                 conversation_history, 
-                critic=args.critic,
-                re_evaluate=args.re_evaluate, 
+                critic=False,
+                re_evaluate=False, 
                 # Enable to lower context usage but increases LLM calls
-                postprocess=args.postprocess,
-                subtaskContext=args.subtaskContext,
+                subtaskContext=False
                 )

@@ -17,6 +17,9 @@ class ProductivityChat:
                  plan_message="",
                  client=None,
                  llm_model=LLM_MODEL,
+                 base_url=OPENAI_API_BASE,
+                 api_key="random-api-key",
+                 functions_model=LLM_MODEL,
                  action_callback=None,
                  reasoning_callback=None,
                  ):
@@ -25,8 +28,9 @@ class ProductivityChat:
         self.agent_actions = agent_actions
         self.plan_message = plan_message
         self.force_action = force_action
+        self.functions_model = functions_model
         if client is None:
-            client = openai.OpenAI()
+            client = openai.OpenAI(base_url=base_url, api_key=api_key)
         self.client = client
         self.action_callback = action_callback
         self.reasoning_callback = reasoning_callback
@@ -107,29 +111,26 @@ Function call: """
         ]
         response = self.client.chat.completions.create(
             #model="gpt-3.5-turbo",
-            model=self.llm_model,
+            model=self.functions_model,
             messages=messages,
             functions=functions,
-            stop=None,
             temperature=0.1,
-            #function_call="auto"
             function_call={"name": "intent"},
         )
-        response_message = response["choices"][0]["message"]
-        if response_message.get("function_call"):
-            function_name = response.choices[0].message["function_call"].name
-            function_parameters = response.choices[0].message["function_call"].arguments
-            # read the json from the string
-            res = json.loads(function_parameters)
-            logger.debug(">>> function name: "+function_name)
+        response_message = response.choices[0].message
+        logger.debug(f"Response Message: {response_message}")
+        if response_message.function_call is not None:
+            function_name = response_message.function_call.name
+            function_parameters = response_message.function_call.arguments
+            res = json.loads(function_parameters) 
+            logger.debug(">>> function name: "+function_name) 
             logger.debug(">>> function parameters: "+function_parameters)
             return res
         return {"action": self.reply_action}
 
     # This is used to collect the descriptions of the agent actions, used to populate the LLM prompt
     def action_description(self, action, agent_actions):
-        descriptions=""
-        # generate descriptions of actions that the agent can pick
+        descriptions="" # generate descriptions of actions that the agent can pick
         for a in agent_actions:
             if ( action != "" and action == a ) or (action == ""):
                 descriptions+=agent_actions[a]["description"]+"\n"
@@ -153,12 +154,12 @@ Function call: """
                 }
             ]
         response = self.function_completion(messages, action=action)
-        response_message = response["choices"][0]["message"]
+        response_message = response.choices[0].message
         response_result = ""
         function_result = {}
-        if response_message.get("function_call"):
-            function_name = response.choices[0].message["function_call"].name
-            function_parameters = response.choices[0].message["function_call"].arguments
+        if response_message.function_call is not None:
+            function_name = response_message.function_call.name
+            function_parameters = response_message.function_call.arguments
             logger.info("==> function parameters: {function_parameters}",function_parameters=function_parameters)
             function_to_call = self.agent_actions[function_name]["function"]
             if self.action_callback:
@@ -205,6 +206,7 @@ Function call: """
     # Rework the content of each message in the history in a way that is understandable by the LLM
     # TODO: switch to templates (?)
     def process_history(self, conversation_history):
+        logger.debug(f"Conversation_history: {conversation_history}")
         messages = ""
         for message in conversation_history:
             # if there is content append it
@@ -229,7 +231,7 @@ Function call: """
 
     def converse(self, responses):
         response = self.client.chat.completions.create(
-            model=self.llm_model,
+            model=self.functions_model,
             messages=responses,
             temperature=0.1,
         )
@@ -243,39 +245,43 @@ Function call: """
 
     ### Fine tune a string before feeding into the LLM
 
-    def analyze(self, responses, prefix="Analyze the following text highlighting the relevant information and identify a list of actions to take if there are any. If there are errors, suggest solutions to fix them", suffix=""):
-        string = self.process_history(responses)
+    def _analyze_get_full_string(self, history_str, prefix="", suffix=""):
         messages = []
-
         if prefix != "":
             messages = [
                 {
-                "role": "user",
-                "content": f"""{prefix}:
+                    "role": "user",
+                    "content": f"""{prefix}: 
+                    ```
+                    {history_str}
+                    ```
 
-```
-{string}
-```
-        """,
+                    """
                 }
             ]
         else:
             messages = [
                 {
-                "role": "user",
-                "content": f"""{string}""",
+                    "role": "user",
+                    "content": history_str
                 }
             ]
-
         if suffix != "":
-            messages[0]["content"]+=f"""{suffix}"""
-    
+            messages[0]["content"] = f"{messages[0]['content']}{suffix}"
+        return messages
+
+
+    def analyze(self, responses, prefix="Analyze the following text highlighting the relevant information and identify a list of actions to take if there are any. If there are errors, suggest solutions to fix them", suffix=""):
+        string = self.process_history(responses)
+        logger.debug(f"Responses after process_history: {responses}")
+        messages = self._analyze_get_full_string(string, prefix, suffix)
+        logger.debug(f"Messages: {messages}")
         response = self.client.chat.completions.create(
             model=self.llm_model,
             messages=messages,
-            stop=None,
-            temperature=0.1,
+            temperature=0.1
         )
+        logger.debug(f"Response analyze: {response}")
         return response.choices[0].message.content
 
     def post_process(self, string):
@@ -298,7 +304,7 @@ Function call: """
             stop=None,
             temperature=0.1,
         )
-        result = response["choices"][0].message.content
+        result = response.choices[0].message.content
         logger.info("==> Processed: {string}", string=result)
         return result
 
@@ -367,10 +373,10 @@ Function call: """
             #function_call="auto"
             function_call={"name": "plan"},
         )
-        response_message = response["choices"][0]["message"]
-        if response_message.get("function_call"):
-            function_name = response.choices[0].message["function_call"].name
-            function_parameters = response.choices[0].message["function_call"].arguments
+        response_message = response.choices[0].message
+        if response_message.function_call is not None:
+            function_name = response_message.function_call.name
+            function_parameters = response_message.function_call.arguments
             # read the json from the string
             res = json.loads(function_parameters)
             logger.debug("<<< function name: {function_name} >>>> parameters: {parameters}", function_name=function_name,parameters=function_parameters)
@@ -411,28 +417,23 @@ Function call: """
             action_picker_message+="```\n"+user_input+"\n```"
             action_picker_message+="\n\nObservation: "+observation
             # if there is no action to do, we can just reply to the user with REPLY_ACTION
-        try:
-              critic_msg=""
-              if critic:
-                descriptions=self.action_description("", self.agent_actions)
+        critic_msg=""
+        if critic:
+            descriptions=self.action_description("", self.agent_actions)
 
-                messages = [
-                                {"role": "user",
-                                "content": f"""Transcript of AI assistant responding to user requests. Replies with the action to perform and the reasoning.
-                    {descriptions}"""},
-                                {"role": "user",
-                    "content": f"""
-    This is the user input: {user_input}
-    Decide now the function to call and give a detailed explaination"""
-                                }
-                            ]
-                critic_msg=self.analyze(messages, prefix="", suffix=f"")
-                logger.info("==> Critic: {critic}", critic=critic_msg)
-              action = self.needs_to_do_action(action_picker_message+"\n"+critic_msg,agent_actions=picker_actions)
-        except Exception as e:
-            logger.error("==> error: ")
-            logger.error(e)
-            action = {"action": self.reply_action}
+            messages = [
+                        {"role": "user",
+                        "content": f"""Transcript of AI assistant responding to user requests. Replies with the action to perform and the reasoning.
+            {descriptions}"""},
+                        {"role": "user",
+            "content": f"""
+This is the user input: {user_input}
+Decide now the function to call and give a detailed explaination"""
+                        }
+                    ]
+            critic_msg=self.analyze(messages, prefix="", suffix=f"")
+            logger.info("==> Critic: {critic}", critic=critic_msg)
+        action = self.needs_to_do_action(action_picker_message+"\n"+critic_msg,agent_actions=picker_actions)
 
         if self.reasoning_callback:
             self.reasoning_callback(action["action"], action["detailed_reasoning"])
@@ -526,6 +527,8 @@ Function call: """
             if re_evaluation_in_progress:
                 conversation_history.extend(responses)
                 return conversation_history
+            logger.debug(f"Conversation_history: {conversation_history}")
+            logger.debug(f"Responses: {responses}")
                 
             # unwrap the list of responses
             conversation_history.append(responses[-1])
@@ -533,20 +536,14 @@ Function call: """
             #responses = converse(responses)
 
             # TODO: this needs to be optimized
-            responses = self.analyze(responses[1:],
+            summary_response = self.analyze(responses[1:],
                                      prefix="", 
                                      suffix=f"Return an appropriate answer given the context above, including a summary.\n")
-
+            logger.debug(f"Responses: {summary_response}")
             # add responses to conversation history by extending the list
-            conversation_history.append(
-                {
-                "role": "assistant",
-                "content": responses,
-                }
-            )
-
+            conversation_history.extend(summary_response)
             # logger.info the latest response from the conversation history
-            logger.info(conversation_history[-1]["content"])
+            logger.info(summary_response)
             #self.tts(conversation_history[-1]["content"])
         else:
             logger.info("==> no action needed")
