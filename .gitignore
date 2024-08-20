@@ -1,4 +1,11 @@
+# LocalAI folders
 db/
 models/
 config.ini
 .dockerenv
+
+# Java Build
+build/
+.settings/
+.gradle/
+.project
