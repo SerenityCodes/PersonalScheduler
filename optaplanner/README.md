@@ -48,7 +48,7 @@
 <details>
  <summary><code>POST</code> <code><b>/events/add/</b></code> <code>Add event/events to the calendar</code></summary>
 
-##### request object
+#### Request Object
 
 ```javascript
 {
@@ -56,14 +56,14 @@
 }
 ```
 
-##### parameters
+#### Parameters
 
 > | name      |  type     | data type               | description                                                           |
 > |-----------|-----------|-------------------------|-----------------------------------------------------------------------|
 > | none      |  required | object (json or yaml)   | n/a  |
 
 
-##### responses
+#### Responses
 
 > | http code     | content-type                      | response                                                            |
 > |---------------|-----------------------------------|---------------------------------------------------------------------|
@@ -78,7 +78,7 @@
 <details>
     <summary><code>POST</code> <code><b>/events/remove/</b></code> <code>Remove events from the calendar</code></summary>
 
-##### Request Object
+#### Request Object
 
 ```javascript
 {
@@ -86,14 +86,14 @@
 }
 ```
 
-##### parameters
+#### Parameters
 
 > | name      |  type     | data type               | description                                                           |
 > |-----------|-----------|-------------------------|-----------------------------------------------------------------------|
 > | none      |  required | object (json or yaml)   | n/a  |
 
 
-##### responses
+#### Responses
 
 > | http code     | content-type                      | response                                                            |
 > |---------------|-----------------------------------|---------------------------------------------------------------------|
