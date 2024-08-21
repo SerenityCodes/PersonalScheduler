@@ -12,3 +12,7 @@ build/
 .settings/
 .gradle/
 .project
+bin/
+.classpath
+.project
+kls_database.db

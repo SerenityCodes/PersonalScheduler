@@ -22,9 +22,10 @@ dependencies {
   testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
   // This dependency is used by the application.
-  implementation(libs.guava)
   implementation("org.optaplanner:optaplanner-core:9.44.0.Final")
   implementation("io.github.resilience4j:resilience4j-all:2.2.0")
+  implementation("io.vavr:vavr:1.0.0-alpha-4")
+  implementation("com.sparkjava:spark-core:2.9.4")
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
