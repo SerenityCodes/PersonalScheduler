@@ -1,6 +1,6 @@
 # Optaplanner Service
 
-## Rest API (docs inspired by https://gist.github.com/azagniotov/a4b16faf0febd12efbc6c3d7370383a6)
+## Rest API (docs inspired by [this gist](https://gist.github.com/azagniotov/a4b16faf0febd12efbc6c3d7370383a6))
 
 ## Common Objects
 
@@ -26,7 +26,7 @@
 <details>
  <summary><code>GET</code> <code><b>/events/get/{max_events}</b></code> <code>Gets all user events</code></summary>
 
-##### Parameters
+#### Parameters
 
 >
 > | name              |  type     | data type      | description                         |
@@ -37,9 +37,9 @@
 
 > | http code     | content-type                      | response                                                            |
 > |---------------|-----------------------------------|---------------------------------------------------------------------|
-> | `200`         | `application/json`        | {events: [{event objects}]}                                                         |
-> | `400`         | `application/json`        | {"code": 400, "reason": error_string}
-> | `500`         | `application/json`        | {"code": 500, "reason": server_error_string}
+> | `200`         | `application/json`        | {events: [{event objects}]}                     |
+> | `400`         | `application/json`        | {"code": 400, "reason": error_string}           |
+> | `500`         | `application/json`        | {"code": 500, "reason": server_error_string}    |
 
 </details>
 
@@ -73,7 +73,7 @@
 
 </details>
 
-### Remove Events from calendar
+### Remove Events from Calendar
 
 <details>
     <summary><code>POST</code> <code><b>/events/remove/</b></code> <code>Remove events from the calendar</code></summary>
